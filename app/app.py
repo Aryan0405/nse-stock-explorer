@@ -3,6 +3,7 @@ import pandas as pd
 import yfinance as yf
 import streamlit as st
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
 import seaborn as sns
 
 st.set_page_config(page_title="Stock Price Analysis", layout="wide")
@@ -94,6 +95,8 @@ with tab2:
         ax.set_title(f"{i} Rolling Volatility")
         ax.set_xlabel("Date")
         ax.set_ylabel("Volatility")
+        ax.fill_between(rolling_vol[i].index, rolling_vol[i].values, color='#e67e22', alpha=0.2)
+        ax.axhline(rolling_vol[i].mean(), color='red', linestyle='--', linewidth=0.8, label='Average Volatility')
         ax.grid(True)
         ax.legend(loc="upper left")
         st.pyplot(fig)
@@ -105,6 +108,9 @@ with tab3:
         ax.set_title(f"{i} Drawdown")
         ax.set_xlabel("Date")
         ax.set_ylabel("Drawdown")
+        ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f'{x:.1%}'))
+        ax.fill_between(drawdown.index, drawdown[i], color='#e74c3c', alpha=0.6)
+        ax.axhline(0, color='black', linestyle='--', linewidth=0.8)
         ax.grid(True)
         ax.legend(loc="upper left")
         st.pyplot(fig)
@@ -117,6 +123,8 @@ with tab4:
         ax.set_title(f"{i} Sharpe Ratio")
         ax.set_xlabel("Date")
         ax.set_ylabel("Sharpe Ratio")
+        ax.axhline(0, color='red', linestyle='--', linewidth=0.8)
+        ax.fill_between(sharpe.index, sharpe[i], where=(sharpe[i] > 0), color='#2ecc71', alpha=0.6, interpolate=True)
         ax.grid(True)
         ax.legend(loc="upper left")
         st.pyplot(fig)

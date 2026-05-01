@@ -1,0 +1,11 @@
+# Ignore local data files
+data/raw/*.csv
+data/raw/*.xlsx
+
+# Python environment
+.venv/
+__pycache__/
+*.pyc
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
