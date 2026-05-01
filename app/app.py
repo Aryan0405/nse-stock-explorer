@@ -93,6 +93,7 @@ with tab1:
         
         ax.set_title(f"{i} Distribution (Kurtosis: {log_returns[i].kurt():.2f}, Skew: {log_returns[i].skew():.2f})")
         ax.legend()
+        ax.grid(True, alpha=0.3)
         st.pyplot(fig)
         plt.close(fig)
 
@@ -110,7 +111,7 @@ with tab2:
 
     ax.set_ylabel("Normalized Price")
     ax.legend(loc="upper left")
-    ax.grid(alpha=0.3)
+    ax.grid(True, alpha=0.3)
     st.pyplot(fig)
     plt.close(fig)
 
@@ -124,6 +125,7 @@ with tab3:
         ax.axhline(rolling_vol[i].mean(), color='red', linestyle='--', alpha=0.6, label='Mean Vol')
         ax.set_title(f"{i} Volatility")
         ax.legend()
+        ax.grid(True, alpha=0.3)
         st.pyplot(fig)
         plt.close(fig)
 
@@ -135,6 +137,7 @@ with tab4:
         ax.plot(drawdown.index, drawdown[i], color='#e74c3c')
         ax.fill_between(drawdown.index, drawdown[i], color='#e74c3c', alpha=0.4)
         ax.yaxis.set_major_formatter(mticker.PercentFormatter(1.0))
+        ax.grid(True, alpha=0.3)
         ax.set_title(f"{i} Drawdown Profile")
         st.pyplot(fig)
         plt.close(fig)
@@ -148,6 +151,7 @@ with tab5:
         ax.axhline(0, color='black', linewidth=1)
         ax.fill_between(sharpe.index, sharpe[i], where=(sharpe[i] > 0), color='#2ecc71', alpha=0.3)
         ax.set_title(f"{i} Sharpe Ratio")
+        ax.grid(True, alpha=0.3)
         st.pyplot(fig)
         plt.close(fig)
 
@@ -158,5 +162,6 @@ with tab6:
     mask = np.triu(np.ones_like(corr, dtype=bool))
     sns.heatmap(corr, annot=True, fmt=".2f", cmap="RdYlGn", mask=mask, 
                 vmin=-1, vmax=1, square=True, linewidths=0.5)
+    ax.grid(True, alpha=0.3)
     st.pyplot(fig)
     plt.close(fig)
