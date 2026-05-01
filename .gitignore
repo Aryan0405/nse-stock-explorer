@@ -1,11 +1,23 @@
-# Ignore local data files
-data/raw/*.csv
-data/raw/*.xlsx
+# ---------------- Data ----------------
+# Ignore raw data (usually large / reproducible)
+data/raw/
 
-# Python environment
-.venv/
+# Optional: ignore processed too (uncomment if needed)
+data/processed/
+
+# Or ignore all large file types
+data/**/*.parquet
+data/**/*.csv
+data/**/*.xlsx
+
+# ---------------- Python ----------------
 __pycache__/
 *.pyc
 
-# Jupyter Notebook checkpoints
+# ---------------- Virtual Environments ----------------
+.venv/
+venv/
+env/
+.env
+# ---------------- Jupyter ----------------
 .ipynb_checkpoints/
