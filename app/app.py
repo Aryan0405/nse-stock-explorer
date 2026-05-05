@@ -22,7 +22,9 @@ stocks = st.sidebar.multiselect(
 
 start_date, end_date = st.sidebar.date_input(
     "Select the date range for analysis:",
-    [pd.to_datetime("2019-01-01"), pd.to_datetime("2024-12-31")]
+    [pd.to_datetime("2019-01-01"), pd.to_datetime("2024-12-31")],
+    min_value=pd.to_datetime("2019-01-01"),
+    max_value=pd.to_datetime("2024-12-31")
 )
 
 if not stocks:
