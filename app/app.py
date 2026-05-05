@@ -62,6 +62,13 @@ def computation(close):
 
 # Process Data
 close = data["Close"].ffill()
+
+# Drop tickers with no data at all
+valid_cols = close.columns[close.notna().any()]
+dropped = [t for t in tickers if t not in valid_cols]
+if dropped:
+    st.warning(f"No data fetched for: {', '.join(dropped)}. Excluded from analysis.")
+close = close[valid_cols]
 log_returns, rolling_vol, cum_returns, drawdown, sharpe, corr = computation(close)
 
 # Define Tabs
@@ -103,12 +110,18 @@ with tab2:
     st.subheader("Price Growth (Base 100)")
     fig, ax = plt.subplots(figsize=(12, 6))
     for i in plot_stocks:
-        base100 = close[i] / close[i].dropna().iloc[0] * 100
+        clean = close[i].dropna()
+        if clean.empty:
+            st.warning(f"No data for {i}. Skipping.")
+            continue
+        base100 = close[i] / clean.iloc[0] * 100
         ax.plot(base100.index, base100.values, label=i)
 
     if benchmark in close.columns:
-        nifty = close[benchmark] / close[benchmark].dropna().iloc[0] * 100
-        ax.plot(nifty.index, nifty.values, color='black', linestyle="--", linewidth=2, label="NIFTY50")
+        clean_b = close[benchmark].dropna()
+        if not clean_b.empty:
+            nifty = close[benchmark] / clean_b.iloc[0] * 100
+            ax.plot(nifty.index, nifty.values, color='black', linestyle="--", linewidth=2, label="NIFTY50")
 
     ax.set_ylabel("Normalized Price")
     ax.legend(loc="upper left")
