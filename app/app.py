@@ -35,8 +35,7 @@ def load_data(tickers, start, end):
         tickers,
         start=start,
         end=end,
-        auto_adjust=True,
-        threads=True
+        auto_adjust=True
     )
     return data
 
@@ -45,7 +44,7 @@ tickers = list(set(stocks + ["^NSEI"]))
 data = load_data(tuple(sorted(tickers)), start_date, end_date)
 
 def computation(close):
-    log_returns = np.log(close / close.shift(1)).dropna()
+    log_returns = np.log(close / close.shift(1)).dropna(how='all')
     rolling_volatility = log_returns.rolling(window=21).std() * np.sqrt(252)
     
     cumulative_returns = (1 + log_returns).cumprod()
@@ -62,6 +61,8 @@ def computation(close):
 
 # Process Data
 close = data["Close"].ffill()
+if isinstance(close, pd.Series):
+    close = close.to_frame()
 
 # Drop tickers with no data at all
 valid_cols = close.columns[close.notna().any()]
@@ -83,7 +84,7 @@ tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
 
 benchmark = "^NSEI"
 # Consistent list: Only plot individual stocks, excluding benchmark
-plot_stocks = [s for s in stocks if s != benchmark]
+plot_stocks = [s for s in stocks if s != benchmark and s in close.columns]
 
 # --- Tab 1: Log Returns Distribution ---
 with tab1:
