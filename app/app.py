@@ -1,15 +1,15 @@
 import numpy as np
 import pandas as pd
-from scipy import stats
 import yfinance as yf
 import streamlit as st
-import matplotlib.pyplot as plt
-import matplotlib.ticker as mticker
-import seaborn as sns
+from datetime import timedelta
 
-# Page Config
+import charts
+
 st.set_page_config(page_title="Stock Price Analysis", layout="wide")
 st.title("Stock Price Analysis")
+
+BENCHMARK = "^NSEI"
 
 # Sidebar
 stocks = st.sidebar.multiselect(
@@ -17,173 +17,106 @@ stocks = st.sidebar.multiselect(
     ["RELIANCE.NS", "HDFCBANK.NS", "INFY.NS", "TCS.NS",
      "MARUTI.NS", "SUNPHARMA.NS", "BAJFINANCE.NS",
      "ASIANPAINT.NS", "ONGC.NS", "ADANIENT.NS", "^NSEI"],
-    default=["RELIANCE.NS", "HDFCBANK.NS"]
+    default=["RELIANCE.NS", "HDFCBANK.NS"],
 )
 
-start_date, end_date = st.sidebar.date_input(
+date_range = st.sidebar.date_input(
     "Select the date range for analysis:",
     [pd.to_datetime("2019-01-01"), pd.to_datetime("2024-12-31")],
     min_value=pd.to_datetime("2019-01-01"),
-    max_value=pd.to_datetime("2024-12-31")
+    max_value=pd.to_datetime("2024-12-31"),
 )
 
 if not stocks:
     st.warning("Please select at least one stock from the sidebar.")
     st.stop()
 
-@st.cache_data
-def load_data(tickers, start, end):
-    data = yf.download(
-        tickers,
-        start=start,
-        end=end,
-        auto_adjust=True
-    )
-    return data
+# date_input returns a 1-tuple while the user is still picking the end date
+if not isinstance(date_range, (list, tuple)) or len(date_range) != 2:
+    st.info("Select both a start and an end date.")
+    st.stop()
+start_date, end_date = date_range
 
-# Ensure Benchmark is always included for calculations
-tickers = list(set(stocks + ["^NSEI"]))
-data = load_data(tuple(sorted(tickers)), start_date, end_date)
+
+@st.cache_data(ttl=3600, show_spinner="Downloading prices...")
+def load_data(tickers, start, end):
+    # yfinance treats `end` as exclusive, so add a day to include it
+    return yf.download(list(tickers), start=start, end=end + timedelta(days=1),
+                       auto_adjust=True, progress=False)
+
 
 def computation(close):
-    log_returns = np.log(close / close.shift(1)).dropna(how='all')
+    log_returns = np.log(close / close.shift(1)).dropna(how="all")
     rolling_volatility = log_returns.rolling(window=21).std() * np.sqrt(252)
-    
-    cumulative_returns = (1 + log_returns).cumprod()
-    rolling_max = cumulative_returns.cummax()
-    drawdown = (cumulative_returns - rolling_max) / rolling_max
-    
-    daily_risk_free_rate = 0.07 / 252
-    mean_return = log_returns.rolling(63).mean()
-    std_of_return = log_returns.rolling(63).std()
-    sharpe_ratio = ((mean_return - daily_risk_free_rate) / std_of_return) * np.sqrt(252)
-    
-    correlation_matrix = log_returns.corr()
-    return log_returns, rolling_volatility, cumulative_returns, drawdown, sharpe_ratio, correlation_matrix
 
-# Process Data
+    # Log returns add up, they do not compound as (1 + r)
+    cumulative = np.exp(log_returns.cumsum())
+    drawdown = (cumulative - cumulative.cummax()) / cumulative.cummax()
+
+    rf = 0.07 / 252
+    sharpe = ((log_returns.rolling(63).mean() - rf) / log_returns.rolling(63).std()) * np.sqrt(252)
+    return log_returns, rolling_volatility, drawdown, sharpe, log_returns.corr()
+
+
+tickers = sorted(set(stocks + [BENCHMARK]))
+data = load_data(tuple(tickers), start_date, end_date)
+
+if data is None or data.empty:
+    st.error("No price data came back from Yahoo Finance. Try again in a minute.")
+    st.stop()
+
 close = data["Close"].ffill()
 if isinstance(close, pd.Series):
-    close = close.to_frame()
+    close = close.to_frame(name=tickers[0])
 
-# Drop tickers with no data at all
 valid_cols = close.columns[close.notna().any()]
 dropped = [t for t in tickers if t not in valid_cols]
 if dropped:
     st.warning(f"No data fetched for: {', '.join(dropped)}. Excluded from analysis.")
 close = close[valid_cols]
-log_returns, rolling_vol, cum_returns, drawdown, sharpe, corr = computation(close)
 
-# Define Tabs
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-    "Log Returns Dist",
-    "Normalized Price",
-    "Rolling Volatility",
-    "Drawdown",
-    "Sharpe Ratio",
-    "Correlation"
-])
+log_returns, rolling_vol, drawdown, sharpe, corr = computation(close)
+plot_stocks = [s for s in stocks if s != BENCHMARK and s in close.columns]
 
-benchmark = "^NSEI"
-# Consistent list: Only plot individual stocks, excluding benchmark
-plot_stocks = [s for s in stocks if s != benchmark and s in close.columns]
+if not plot_stocks:
+    st.info("Select at least one stock other than the benchmark (^NSEI).")
+    st.stop()
 
-# --- Tab 1: Log Returns Distribution ---
-with tab1:
+tabs = st.tabs(["Log Returns Dist", "Normalized Price", "Rolling Volatility",
+                "Drawdown", "Sharpe Ratio", "Correlation"])
+
+
+def show(fig):
+    st.plotly_chart(fig, width="stretch", theme=None)
+
+
+with tabs[0]:
     st.subheader("Returns Distribution & Normality")
-    for i in plot_stocks:
-        fig, ax = plt.subplots(figsize=(10, 4))
-        ax.hist(log_returns[i], bins=50, density=True, color='steelblue', alpha=0.7, edgecolor='white', label=f"{i} Log Returns")
-        ax.axvline(log_returns[i].mean(), color='orange', linestyle='--', label='Mean')
-        ax.axvline(log_returns[i].median(), color='green', linestyle='--', label='Median')
-        
-        mu, std = log_returns[i].mean(), log_returns[i].std()
-        x = np.linspace(log_returns[i].min(), log_returns[i].max(), 200)
-        ax.plot(x, stats.norm.pdf(x, mu, std), 'k--', label="Normal Fit")
-        
-        ax.set_title(f"{i} Distribution (Kurtosis: {log_returns[i].kurt():.2f}, Skew: {log_returns[i].skew():.2f})")
-        ax.legend()
-        ax.grid(True, alpha=0.3)
-        ax.set_axisbelow(True)
-        st.pyplot(fig)
-        plt.close(fig)
+    for s in plot_stocks:
+        show(charts.returns_distribution(log_returns[s], s))
 
-# --- Tab 2: Normalized Price (Growth) ---
-with tab2:
+with tabs[1]:
     st.subheader("Price Growth (Base 100)")
-    fig, ax = plt.subplots(figsize=(12, 6))
-    for i in plot_stocks:
-        clean = close[i].dropna()
-        if clean.empty:
-            st.warning(f"No data for {i}. Skipping.")
-            continue
-        base100 = close[i] / clean.iloc[0] * 100
-        ax.plot(base100.index, base100.values, label=i)
+    show(charts.normalized_price(close, plot_stocks, BENCHMARK))
 
-    if benchmark in close.columns:
-        clean_b = close[benchmark].dropna()
-        if not clean_b.empty:
-            nifty = close[benchmark] / clean_b.iloc[0] * 100
-            ax.plot(nifty.index, nifty.values, color='black', linestyle="--", linewidth=2, label="NIFTY50")
-
-    ax.set_ylabel("Normalized Price")
-    ax.legend(loc="upper left")
-    ax.grid(True, alpha=0.3)
-    ax.set_axisbelow(True)
-    st.pyplot(fig)
-    plt.close(fig)
-
-# --- Tab 3: Rolling Volatility ---
-with tab3:
+with tabs[2]:
     st.subheader("21-Day Rolling Volatility (Annualized)")
-    for i in plot_stocks:
-        fig, ax = plt.subplots(figsize=(12, 4))
-        ax.plot(rolling_vol.index, rolling_vol[i], label=f"{i} Vol", color='#e67e22')
-        ax.fill_between(rolling_vol[i].index, rolling_vol[i].values, color='#e67e22', alpha=0.2)
-        ax.axhline(rolling_vol[i].mean(), color='red', linestyle='--', alpha=0.6, label='Mean Vol')
-        ax.set_title(f"{i} Volatility")
-        ax.legend()
-        ax.grid(True, alpha=0.3)
-        ax.set_axisbelow(True)
-        st.pyplot(fig)
-        plt.close(fig)
+    for s in plot_stocks:
+        show(charts.rolling_volatility(rolling_vol[s], s))
 
-# --- Tab 4: Drawdown ---
-with tab4:
+with tabs[3]:
     st.subheader("Historical Drawdowns")
-    for i in plot_stocks:
-        fig, ax = plt.subplots(figsize=(12, 4))
-        ax.plot(drawdown.index, drawdown[i], color='#e74c3c')
-        ax.fill_between(drawdown.index, drawdown[i], color='#e74c3c', alpha=0.4)
-        ax.yaxis.set_major_formatter(mticker.PercentFormatter(1.0))
-        ax.grid(True, alpha=0.3)
-        ax.set_title(f"{i} Drawdown Profile")
-        ax.set_axisbelow(True)  
-        st.pyplot(fig)
-        plt.close(fig)
+    for s in plot_stocks:
+        show(charts.drawdown_chart(drawdown[s], s))
 
-# --- Tab 5: Sharpe Ratio ---
-with tab5:
+with tabs[4]:
     st.subheader("Rolling 63-Day Sharpe Ratio")
-    for i in plot_stocks:
-        fig, ax = plt.subplots(figsize=(12, 4))
-        ax.plot(sharpe.index, sharpe[i], color='#2ecc71')
-        ax.axhline(0, color='black', linewidth=1)
-        ax.fill_between(sharpe.index, sharpe[i], where=(sharpe[i] > 0), color='#2ecc71', alpha=0.3)
-        ax.set_title(f"{i} Sharpe Ratio")
-        ax.grid(True, alpha=0.3)
-        ax.set_axisbelow(True)
-        st.pyplot(fig)
-        plt.close(fig)
+    for s in plot_stocks:
+        show(charts.sharpe_chart(sharpe[s], s))
 
-# --- Tab 6: Correlation ---
-with tab6:
+with tabs[5]:
     st.subheader("Asset Correlation Matrix")
-    fig, ax = plt.subplots(figsize=(10, 8))
-    mask = np.triu(np.ones_like(corr, dtype=bool))
-    sns.heatmap(corr, annot=True, fmt=".2f", cmap="RdYlGn", mask=mask, 
-                vmin=-1, vmax=1, square=True, linewidths=0.5)
-    ax.grid(True, alpha=0.3)
-    ax.set_axisbelow(True)
-    st.pyplot(fig)
-    plt.close(fig)
+    if corr.shape[0] < 2:
+        st.info("Select at least two assets to see correlations.")
+    else:
+        show(charts.correlation_heatmap(corr))
